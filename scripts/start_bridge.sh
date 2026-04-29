@@ -1,6 +1,8 @@
 #!/bin/bash
 # Start adb_bridge — skips if already running on port 8765.
 # Uses MOBILE_GUI_PYTHON env var, .venv, or system python3 (in that order).
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PORT=8765
@@ -17,12 +19,29 @@ if [ ! -f "$BUNDLE_ROOT/config.yaml" ]; then
 fi
 
 # Resolve Python interpreter
-if [ -n "$MOBILE_GUI_PYTHON" ]; then
+if [ -n "${MOBILE_GUI_PYTHON:-}" ]; then
     PYTHON="$MOBILE_GUI_PYTHON"
 elif [ -f "$BUNDLE_ROOT/.venv/bin/python" ]; then
     PYTHON="$BUNDLE_ROOT/.venv/bin/python"
 else
     PYTHON="python3"
+fi
+
+if ! command -v "$PYTHON" >/dev/null 2>&1 && [ ! -x "$PYTHON" ]; then
+    echo "[start_bridge] ERROR: Python interpreter not found: $PYTHON"
+    echo "[start_bridge] Set MOBILE_GUI_PYTHON, create .venv/bin/python, or install python3."
+    exit 1
+fi
+
+PY_DEPS_SCRIPT=$'import importlib.util\nmods={"flask":"flask","requests":"requests","yaml":"pyyaml","PIL":"Pillow"}\nmissing=[pkg for mod,pkg in mods.items() if importlib.util.find_spec(mod) is None]\nif missing:\n    raise SystemExit("\\n".join(missing))\n'
+if ! MISSING_DEPS=$("$PYTHON" -c "$PY_DEPS_SCRIPT" 2>&1); then
+    echo "[start_bridge] ERROR: Missing Python dependencies."
+    echo "$MISSING_DEPS"
+    echo "[start_bridge] Install them with:"
+    echo ""
+    echo "    $PYTHON -m pip install flask requests pyyaml pillow"
+    echo ""
+    exit 1
 fi
 
 # Skip if already running

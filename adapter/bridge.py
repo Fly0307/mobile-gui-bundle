@@ -5,8 +5,11 @@ Self-contained: all dependencies are in adapter/ alongside this file.
 Usage: python bridge.py <command> --args '<JSON>'
 """
 import argparse
+import importlib.util
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -57,6 +60,187 @@ def _bridge_url(config: dict) -> str:
     h = config.get("bridge", {}).get("host", "127.0.0.1")
     p = config.get("bridge", {}).get("port", 8765)
     return f"http://{h}:{p}"
+
+
+def _check_python_modules(python_executable: str) -> tuple[bool, list[str]]:
+    script = (
+        "import importlib.util\n"
+        "mods={'flask':'flask','requests':'requests','yaml':'pyyaml','PIL':'Pillow'}\n"
+        "missing=[pkg for mod,pkg in mods.items() if importlib.util.find_spec(mod) is None]\n"
+        "print('\\n'.join(missing))\n"
+    )
+    try:
+        proc = subprocess.run(
+            [python_executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return False, ["flask", "requests", "pyyaml", "Pillow"]
+    if proc.returncode != 0:
+        return False, ["flask", "requests", "pyyaml", "Pillow"]
+    missing = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    return True, missing
+
+
+def _check_bridge_port(config: dict | None) -> tuple[bool, str]:
+    host = "127.0.0.1"
+    port = 8765
+    if config:
+        host = config.get("bridge", {}).get("host", host)
+        port = int(config.get("bridge", {}).get("port", port))
+    target = f"{host}:{port}"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1.0)
+            ok = sock.connect_ex((host, port)) == 0
+        return ok, target
+    except OSError as e:
+        return False, f"{target} probe failed: {e}"
+
+
+def _resolve_python() -> tuple[str, str]:
+    if os.environ.get("MOBILE_GUI_PYTHON"):
+        return os.environ["MOBILE_GUI_PYTHON"], "env"
+    venv_python = os.path.join(_PLUGIN_DIR, ".venv", "bin", "python")
+    if os.path.exists(venv_python):
+        return venv_python, "venv"
+    return "python3", "system"
+
+
+def cmd_doctor(args: dict) -> dict:
+    checks: list[dict] = []
+    fixes: list[str] = []
+
+    adb_path = shutil.which("adb")
+    checks.append({
+        "name": "adb_binary",
+        "status": "ok" if adb_path else "failed",
+        "detail": adb_path or "adb not found in PATH",
+    })
+    if not adb_path:
+        fixes.append("安装 adb 并确保 `adb` 在 PATH 中可执行。")
+
+    node_path = shutil.which("node")
+    checks.append({
+        "name": "node_binary",
+        "status": "ok" if node_path else "failed",
+        "detail": node_path or "node not found in PATH",
+    })
+    if not node_path:
+        fixes.append("安装 Node.js，并确保 `node` 在 PATH 中可执行。")
+
+    python_executable, python_source = _resolve_python()
+    python_path = shutil.which(python_executable) if os.path.sep not in python_executable else python_executable
+    checks.append({
+        "name": "python_executable",
+        "status": "ok" if python_path and os.path.exists(python_path) else "failed",
+        "detail": f"{python_executable} ({python_source})",
+    })
+    if not python_path or (os.path.sep in python_executable and not os.path.exists(python_executable)):
+        fixes.append("设置 `MOBILE_GUI_PYTHON` 或准备 `.venv/bin/python` / `python3`。")
+
+    python_probe_ok = bool(python_path) and (os.path.exists(python_path) or python_path == python_executable)
+    if python_probe_ok:
+        deps_ok, missing_modules = _check_python_modules(python_executable)
+        dep_status = "ok" if deps_ok and not missing_modules else "failed"
+        checks.append({
+            "name": "python_dependencies",
+            "status": dep_status,
+            "detail": "all required packages installed" if dep_status == "ok" else f"missing: {', '.join(missing_modules)}",
+        })
+        if dep_status != "ok":
+            fixes.append(f"使用 `{python_executable} -m pip install flask requests pyyaml pillow` 安装 Python 依赖。")
+    else:
+        checks.append({
+            "name": "python_dependencies",
+            "status": "failed",
+            "detail": "python executable unavailable",
+        })
+
+    config = None
+    config_exists = os.path.exists(_CONFIG_PATH)
+    checks.append({
+        "name": "config_exists",
+        "status": "ok" if config_exists else "warning",
+        "detail": _CONFIG_PATH,
+    })
+    if not config_exists:
+        fixes.append(f"先执行 `cp {_EXAMPLE_PATH} {_CONFIG_PATH}`，再填写 llm.api_base / llm.api_key / llm.model_name。")
+
+    if config_exists:
+        try:
+            config = _load_config(args.get("config_path"))
+            missing_config = []
+            for key in ("llm.api_base", "llm.model_name"):
+                node = config
+                for part in key.split("."):
+                    node = node.get(part) if isinstance(node, dict) else None
+                if not node:
+                    missing_config.append(key)
+            checks.append({
+                "name": "config_required_fields",
+                "status": "ok" if not missing_config else "warning",
+                "detail": "all required config fields present" if not missing_config else f"missing: {', '.join(missing_config)}",
+            })
+            if missing_config:
+                fixes.append("调用 `mobile_gui_setup` 补齐必填配置字段。")
+        except Exception as e:
+            checks.append({
+                "name": "config_required_fields",
+                "status": "failed",
+                "detail": f"failed to parse config: {e}",
+            })
+            fixes.append("修复 `config.yaml` 的 YAML 格式错误。")
+
+    if adb_path:
+        try:
+            proc = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=5)
+            device_lines = [line for line in proc.stdout.splitlines()[1:] if "\tdevice" in line]
+            checks.append({
+                "name": "adb_device_connection",
+                "status": "ok" if device_lines else "warning",
+                "detail": device_lines[0] if device_lines else "no authorized device found",
+            })
+            if not device_lines:
+                fixes.append("连接 Android 设备并通过 `adb devices` 确认其处于 `device` 状态。")
+        except Exception as e:
+            checks.append({
+                "name": "adb_device_connection",
+                "status": "failed",
+                "detail": str(e),
+            })
+            fixes.append("检查 adb server 是否可启动，并确认当前用户有权访问设备。")
+
+    bridge_reachable, bridge_target = _check_bridge_port(config)
+    checks.append({
+        "name": "adb_bridge_port",
+        "status": "ok" if bridge_reachable else "warning",
+        "detail": f"{bridge_target} reachable" if bridge_reachable else f"{bridge_target} not reachable",
+    })
+    if not bridge_reachable:
+        fixes.append(f"运行 `bash {os.path.join(_PLUGIN_DIR, 'scripts', 'start_bridge.sh')}` 启动 adb_bridge。")
+
+    statuses = {check["status"] for check in checks}
+    if not config_exists:
+        status = "needs_setup"
+    elif "failed" in statuses:
+        status = "failed"
+    elif "warning" in statuses:
+        status = "warning"
+    else:
+        status = "ok"
+
+    return {
+        "status": status,
+        "checks": checks,
+        "fixes": fixes,
+        "config_path": _CONFIG_PATH,
+        "example_config_path": _EXAMPLE_PATH,
+        "python": python_executable,
+        "start_bridge_cmd": f"bash {os.path.join(_PLUGIN_DIR, 'scripts', 'start_bridge.sh')}",
+    }
 
 
 # ── Commands ───────────────────────────────────────────────────────────────────
@@ -251,6 +435,7 @@ def cmd_setup(args: dict) -> dict:
 
 COMMANDS = {
     "device_status": cmd_device_status,
+    "doctor": cmd_doctor,
     "observe": cmd_observe,
     "start_task": cmd_start_task,
     "resume_task": cmd_resume_task,

@@ -217,16 +217,37 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' \
 预期工具包括：
 
 - `mobile_device_status`
+- `mobile_gui_doctor`
 - `mobile_gui_observe`
 - `mobile_gui_start_task`
 - `mobile_gui_resume_task`
 - `mobile_gui_setup`
 - `mobile_gui_cancel_task`
 
-### 4. 验证设备状态工具
+### 4. 先运行环境诊断
 
 ```bash
-printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mobile_device_status","arguments":{}}}\n' \
+printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mobile_gui_doctor","arguments":{}}}\n' \
+  | node mobile-gui-bundle/dist/bundle.js
+```
+
+这个工具会检查：
+
+- `adb` 是否存在
+- `node` 是否存在
+- Python 解释器是否可用
+- `flask`、`requests`、`pyyaml`、`Pillow` 是否安装
+- `config.yaml` 是否存在
+- `llm.api_base`、`llm.model_name` 是否已配置
+- `adb devices` 是否有可用设备
+- `adb_bridge` 端口是否可达
+
+若返回 `failed` 或 `warning`，优先根据 `fixes` 字段处理问题。
+
+### 5. 验证设备状态工具
+
+```bash
+printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"mobile_device_status","arguments":{}}}\n' \
   | node mobile-gui-bundle/dist/bundle.js
 ```
 
@@ -236,7 +257,7 @@ printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mobile_d
 - `plugin_available: true`
 - `bridge_url: http://127.0.0.1:8765`
 
-### 5. 验证截图能力
+### 6. 验证截图能力
 
 ```bash
 printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"mobile_gui_observe","arguments":{}}}\n' \

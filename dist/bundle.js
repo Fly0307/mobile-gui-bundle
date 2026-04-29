@@ -20881,7 +20881,7 @@ function callBridge(command, args = {}) {
 
 // src/index.ts
 var server = new Server(
-  { name: "mobile-gui-plugin", version: "0.1.1" },
+  { name: "mobile-gui-plugin", version: "0.1.2" },
   { capabilities: { tools: {} } }
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -20889,6 +20889,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "mobile_device_status",
       description: "Check ADB device connection and plugin availability.",
+      inputSchema: { type: "object", properties: {}, required: [] }
+    },
+    {
+      name: "mobile_gui_doctor",
+      description: "Run environment diagnostics for adb, node, python dependencies, config, device connection, and adb_bridge availability.",
       inputSchema: { type: "object", properties: {}, required: [] }
     },
     {
@@ -20953,6 +20958,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
   const commandMap = {
     mobile_device_status: "device_status",
+    mobile_gui_doctor: "doctor",
     mobile_gui_observe: "observe",
     mobile_gui_start_task: "start_task",
     mobile_gui_resume_task: "resume_task",

@@ -88,6 +88,7 @@ openclaw gateway restart
 Ask the agent to list available tools and confirm the following are present:
 
 - `mobile_device_status`
+- `mobile_gui_doctor`
 - `mobile_gui_observe`
 - `mobile_gui_start_task`
 - `mobile_gui_resume_task`

@@ -31,10 +31,12 @@ metadata:
 
 在执行任务前，优先检查以下条件：
 
-1. `mobile_device_status {}`
+1. `mobile_gui_doctor {}`
 2. 若返回 `needs_setup`，进入初始化流程
-3. 若 `adb_connected != true`，告知用户先连接 ADB 设备
-4. 若 bridge 未启动或返回连接错误，提示用户先启动 bundle 内的 `scripts/start_bridge.sh`
+3. 若返回 `failed` 或 `warning`，先根据 `fixes` 字段逐项处理环境问题
+4. 再调用 `mobile_device_status {}`
+5. 若 `adb_connected != true`，告知用户先连接 ADB 设备
+6. 若 bridge 未启动或返回连接错误，提示用户先启动 bundle 内的 `scripts/start_bridge.sh`
 
 ## Safe Execution Policy
 
@@ -57,6 +59,16 @@ metadata:
 若用户未明确确认，不要调用 `mobile_gui_start_task`。
 
 ## Standard Flow
+
+```json
+mobile_gui_doctor {}
+```
+
+- 若 `status == "needs_setup"`：进入 setup flow
+- 若 `status == "failed"`：优先处理 `fixes` 中的环境问题
+- 若 `status == "warning"`：根据 `checks` 判断是否可继续；通常应先修复 bridge / ADB 告警
+
+然后执行：
 
 ```json
 mobile_device_status {}
