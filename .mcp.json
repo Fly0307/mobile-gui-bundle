@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mobile-gui": {
+      "command": "node",
+      "args": ["dist/bundle.js"],
+      "env": {
+        "MOBILE_GUI_PYTHON": "python3"
+      }
+    }
+  }
+}

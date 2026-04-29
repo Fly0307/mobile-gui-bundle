@@ -1,0 +1,14 @@
+{
+  "name": "mobile-gui-bundle",
+  "version": "0.1.0",
+  "description": "Android GUI automation bundle for OpenClaw via MCP tools and skill guidance",
+  "skills": [
+    "skills"
+  ],
+  "mcpServers": [
+    ".mcp.json"
+  ],
+  "interface": {
+    "shortDescription": "Android GUI automation skill + MCP bridge bundle"
+  }
+}

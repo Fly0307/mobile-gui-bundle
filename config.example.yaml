@@ -1,0 +1,33 @@
+llm:
+  api_base: "xxx"
+  api_key: "sk-xxxx(example)"
+  model_name: "MobiMind-1.5-4B(example)"
+  temperature: 0.1
+  max_tokens: 4096
+  top_p: 0.95
+  # image_resize: [728, 728]   # uncomment to resize screenshots before sending to LLM
+  image_resize: [728, 728]
+  timeout: 60                  # LLM HTTP 请求超时（秒），建议 60~120
+
+adb:
+  device: ""                   # 留空自动用第一个设备；或填 "192.168.x.x:port"
+  yadb_path: ""                # 留空使用 adapter/yadb（默认）
+  local_tmp_dir: "~/.openclaw/mobile_gui/screenshots"
+  override_size: null          # 启用时填 [width, height]，坐标换算将使用该分辨率
+  force_stop_sleep: 1.0        # force-stop 后等待 app 退出的时间（秒）
+  tap_focus_sleep: 0.5         # TYPE 动作点击聚焦后等待输入法弹出的时间（秒）
+
+agent:
+  max_steps: 50
+  delay_before_screenshot: 0.5 # 每步执行动作后、下一次截图前的等待时间（秒），建议 0.3~1
+  post_launch_sleep: 2.0      # launch/AWAKE 后等待 app 启动的时间（秒）
+  pre_launch_home_sleep: 1.0  # 按 HOME 键后等待桌面就绪的时间（秒）
+  wait_action_default: 2.0    # WAIT 动作未指定秒数时的默认等待时间（秒）
+  log_dir: "./mc_logs"
+  reflush_app: true           # AWAKE 动作前是否 force-stop app
+  think: true                 # 是否要求 LLM 输出 <THINK> 推理块；false 可缩短推理耗时
+
+bridge:
+  host: "127.0.0.1"
+  port: 8765
+  request_timeout: 30         # bridge HTTP 请求超时（秒）
