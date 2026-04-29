@@ -20881,7 +20881,7 @@ function callBridge(command, args = {}) {
 
 // src/index.ts
 var server = new Server(
-  { name: "mobile-gui-plugin", version: "0.1.0" },
+  { name: "mobile-gui-plugin", version: "0.1.1" },
   { capabilities: { tools: {} } }
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
